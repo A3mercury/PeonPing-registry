@@ -1,7 +1,7 @@
 name: Validate Index
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     paths:
       - 'index.json'
@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Validate index.json schema
@@ -347,8 +348,23 @@ jobs:
               print(f"\nAll {len(packs)} pack(s) validated successfully")
           PYEOF
 
+      - name: Write verdict
+        if: always()
+        env:
+          SCHEMA_RESULT: ${{ steps.schema.outcome }}
+          TRUST_RESULT: ${{ steps.trust.outcome }}
+          SOURCES_RESULT: ${{ steps.sources.outcome }}
+        run: |
+          if [ "$SCHEMA_RESULT" = "success" ] && [ "$TRUST_RESULT" = "success" ] && [ "$SOURCES_RESULT" = "success" ]; then
+            echo "pass" > verdict.txt
+          else
+            echo "fail" > verdict.txt
+          fi
+          echo "Verdict: $(cat verdict.txt)"
+
       - name: Post review comment
         if: always()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -476,10 +492,6 @@ jobs:
               check=True
           )
           print("Posted review comment")
-
-          # Write verdict for downstream steps
-          with open('verdict.txt', 'w') as f:
-              f.write('pass' if all_ok else 'fail')
           PYEOF
 
       - name: Auto-approve
